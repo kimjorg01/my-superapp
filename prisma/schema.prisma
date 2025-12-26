@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// --- MODULE: NOTES ---
+model Note {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+}
+
+// --- MODULE: POKEMON ---
+
+model PokemonSeries {
+  id        String   @id // e.g. "swsh"
+  name      String
+  logo      String?
+  sets      PokemonSet[]
+}
+
+model PokemonSet {
+  id        String   @id // e.g. "swsh1"
+  name      String
+  logo      String?
+  cardCount Int
+  
+  seriesId  String
+  series    PokemonSeries @relation(fields: [seriesId], references: [id])
+  
+  cards     PokemonCard[]
+}
+
+model PokemonCard {
+  id        String   @id // e.g. "swsh1-001"
+  localId   String
+  name      String
+  image     String
+  rarity    String?
+  
+  setId     String
+  set       PokemonSet    @relation(fields: [setId], references: [id])
+  
+  isOwned   Boolean      @default(false)
+  quantity  Int          @default(0)
+}
