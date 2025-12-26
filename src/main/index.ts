@@ -3,6 +3,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { PrismaClient } from '@prisma/client'
+import os from 'os'
+import http from 'http'
 
 const dbPath = is.dev
   ? join(__dirname, '../../prisma/dev.db')
@@ -37,6 +39,159 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  // --- API: SYSTEM SPECS ---
+  ipcMain.handle('get-system-specs', () => {
+    const cpus = os.cpus()
+    const totalMem = os.totalmem()
+    const freeMem = os.freemem()
+
+    return {
+      cpuModel: cpus[0].model,
+      cpuCores: cpus.length,
+      totalMem: Math.round(totalMem / (1024 * 1024 * 1024)), // GB
+      freeMem: Math.round(freeMem / (1024 * 1024 * 1024)), // GB
+      platform: os.platform(),
+      release: os.release(),
+      hostname: os.hostname()
+    }
+  })
+
+  // --- API: AI ---
+
+  // 1. Chat History Management
+  ipcMain.handle('get-chat-sessions', async () => {
+    return await prisma.chatSession.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { messages: { take: 1, orderBy: { createdAt: 'desc' } } } // Preview last message
+    })
+  })
+
+  ipcMain.handle('create-chat-session', async (_event, title) => {
+    return await prisma.chatSession.create({
+      data: { title: title || 'New Chat' }
+    })
+  })
+
+  ipcMain.handle('delete-chat-session', async (_event, id) => {
+    return await prisma.chatSession.delete({ where: { id } })
+  })
+
+  ipcMain.handle('get-chat-messages', async (_event, sessionId) => {
+    return await prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'asc' }
+    })
+  })
+
+  // 2. Ask AI
+  ipcMain.handle('ask-ai', async (_event, { prompt, model, sessionId }) => {
+    try {
+      // 1. Gather Context
+      const notes = await prisma.note.findMany({ take: 10, orderBy: { createdAt: 'desc' } })
+      const pokemonCount = await prisma.pokemonCard.count({ where: { isOwned: true } })
+      const recentPokemon = await prisma.pokemonCard.findMany({
+        where: { isOwned: true },
+        take: 5,
+        orderBy: { id: 'desc' }
+      })
+
+      // Format Context as "Tables" for better AI readability
+      const notesTable = notes
+        .map((n) => `| ${n.id} | ${n.title} | ${n.content.substring(0, 50)}... |`)
+        .join('\n')
+      const pokemonTable = recentPokemon
+        .map((p) => `| ${p.name} | ${p.rarity || 'Common'} | ${p.setId} |`)
+        .join('\n')
+
+      const contextString = `
+      You are a helpful assistant inside a SuperApp.
+      
+      === DATABASE CONTEXT ===
+      
+      [USER STATS]
+      - Total Pokemon Cards Owned: ${pokemonCount}
+      
+      [RECENT POKEMON CARDS]
+      | Name | Rarity | Set |
+      |---|---|---|
+      ${pokemonTable}
+      
+      [RECENT NOTES]
+      | ID | Title | Preview |
+      |---|---|---|
+      ${notesTable}
+      
+      === END CONTEXT ===
+
+      Please answer the following question using this context if relevant.
+      User Question: ${prompt}
+      `
+
+      // 2. Save User Message
+      if (sessionId) {
+        await prisma.chatMessage.create({
+          data: { role: 'user', content: prompt, sessionId }
+        })
+      }
+
+      // 3. Call Ollama
+      const aiResponse: string = await new Promise((resolve, reject) => {
+        const postData = JSON.stringify({
+          model: model || 'gpt-oss:20b',
+          prompt: contextString,
+          stream: false
+        })
+
+        const req = http.request(
+          {
+            hostname: 'localhost',
+            port: 11434,
+            path: '/api/generate',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData)
+            }
+          },
+          (res) => {
+            let data = ''
+            res.on('data', (chunk) => {
+              data += chunk
+            })
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data)
+                resolve(json.response)
+              } catch (e) {
+                reject('Failed to parse AI response')
+              }
+            })
+          }
+        )
+
+        req.on('error', (e) => {
+          console.error('Ollama request failed:', e)
+          reject('Ollama is likely not running. Please start Ollama.')
+        })
+
+        req.write(postData)
+        req.end()
+      })
+
+      // 4. Save AI Response
+      if (sessionId) {
+        await prisma.chatMessage.create({
+          data: { role: 'assistant', content: aiResponse, sessionId }
+        })
+      }
+
+      return aiResponse
+    } catch (error) {
+      console.error('AI Error:', error)
+      return "I'm sorry, I encountered an error processing your request."
+    }
   })
 
   // --- API: NOTES ---

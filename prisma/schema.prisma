@@ -49,3 +49,21 @@ model PokemonCard {
   isOwned   Boolean      @default(false)
   quantity  Int          @default(0)
 }
+
+// --- MODULE: AI CHAT ---
+
+model ChatSession {
+  id        Int      @id @default(autoincrement())
+  title     String
+  createdAt DateTime @default(now())
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  role      String   // 'user' | 'assistant'
+  content   String
+  sessionId Int
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}

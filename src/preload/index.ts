@@ -13,7 +13,17 @@ const api = {
   getPokemonSeries: () => ipcRenderer.invoke('get-pokemon-series'), // <--- NEW
   getSetsInSeries: (seriesId) => ipcRenderer.invoke('get-sets-in-series', seriesId), // <--- CHANGED
   getCardsInSet: (setId) => ipcRenderer.invoke('get-cards-in-set', setId),
-  toggleCardOwned: (cardId) => ipcRenderer.invoke('toggle-card-owned', cardId)
+  toggleCardOwned: (cardId) => ipcRenderer.invoke('toggle-card-owned', cardId),
+
+  // System & AI
+  getSystemSpecs: () => ipcRenderer.invoke('get-system-specs'),
+  askAi: (prompt, model, sessionId) => ipcRenderer.invoke('ask-ai', { prompt, model, sessionId }),
+
+  // Chat History
+  getChatSessions: () => ipcRenderer.invoke('get-chat-sessions'),
+  createChatSession: (title) => ipcRenderer.invoke('create-chat-session', title),
+  deleteChatSession: (id) => ipcRenderer.invoke('delete-chat-session', id),
+  getChatMessages: (sessionId) => ipcRenderer.invoke('get-chat-messages', sessionId)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
