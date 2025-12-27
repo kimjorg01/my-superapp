@@ -25,15 +25,23 @@ export default function PokemonPage() {
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'rarity'>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [zoomLevel, setZoomLevel] = useState(5); // 3 to 8 columns
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    const saved = localStorage.getItem('pokemon_zoom_level');
+    return saved ? parseInt(saved) : 5;
+  });
 
   // 1. Load Series on startup
   useEffect(() => {
     loadSeries();
   }, []);
 
-  const getProcessedCards = () => {
-    let processed = [...cardList];
+  // Save zoom level
+  useEffect(() => {
+    localStorage.setItem('pokemon_zoom_level', zoomLevel.toString());
+  }, [zoomLevel]);
+
+  const processCardList = (list: any[]) => {
+    let processed = [...list];
 
     // 1. Search Filter
     if (searchQuery) {
@@ -71,7 +79,7 @@ export default function PokemonPage() {
     return processed;
   };
 
-  const processedCards = getProcessedCards();
+  const processedCards = view === 'favorites' ? processCardList(favoritesList) : processCardList(cardList);
 
   const loadSeries = async () => {
     setLoading(true);
@@ -226,36 +234,36 @@ export default function PokemonPage() {
   if (view === 'favorites') {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setView('series')} className="text-indigo-300 hover:text-white transition flex items-center gap-2">
-              <span>←</span> Back to Series
+        <div className="flex items-center justify-between gap-6 mb-10">
+          <div className="flex items-center gap-6">
+            <button onClick={() => setView('series')} className="text-indigo-300 hover:text-white transition flex items-center gap-2 group">
+              <span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Series
             </button>
-            <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-              <span className="text-yellow-400">★</span> Favorite Cards
+            <h2 className="text-4xl font-bold text-white flex items-center gap-3">
+              <span className="text-yellow-400 drop-shadow-lg">★</span> Favorite Cards
             </h2>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             {totalValue !== null && (
-              <div className="bg-green-900/50 border border-green-500/30 px-4 py-2 rounded-lg">
-                <span className="text-green-400 text-sm uppercase font-bold mr-2">Total Value</span>
-                <span className="text-white font-mono text-xl">${totalValue.toFixed(2)}</span>
+              <div className="bg-green-900/40 border border-green-500/30 px-6 py-3 rounded-xl backdrop-blur-md shadow-lg shadow-green-900/20">
+                <span className="text-green-400 text-xs uppercase font-bold tracking-wider block mb-1">Total Collection Value</span>
+                <span className="text-white font-mono text-3xl font-bold tracking-tight">${totalValue.toFixed(2)}</span>
               </div>
             )}
             <button 
               onClick={calculateTotalValue}
               disabled={calculatingValue || favoritesList.length === 0}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 flex items-center gap-3 transform hover:-translate-y-0.5 active:translate-y-0"
             >
               {calculatingValue ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                   Calculating...
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                   Calculate Value
                 </>
               )}
@@ -263,9 +271,72 @@ export default function PokemonPage() {
           </div>
         </div>
 
+        {/* Toolbar */}
+        <div className="flex items-center gap-4 glass-panel px-4 py-2 rounded-xl flex-wrap mb-6">
+          {/* Search */}
+          <input 
+            type="text" 
+            placeholder="Search..." 
+            className="bg-transparent border-b border-white/20 px-2 py-1 text-sm outline-none focus:border-indigo-400 text-white placeholder-gray-500 w-40"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+
+          {/* Filter */}
+          <select 
+            className="bg-transparent border-none outline-none text-sm text-gray-300 cursor-pointer hover:text-white"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as any)}
+          >
+            <option value="all" className="text-black">Show All</option>
+            <option value="owned" className="text-black">Owned Only</option>
+            <option value="missing" className="text-black">Missing Only</option>
+          </select>
+
+          <div className="w-px h-4 bg-white/20 mx-2"></div>
+
+          {/* Sort */}
+          <div className="flex items-center gap-2">
+            <select 
+              className="bg-transparent border-none outline-none text-sm text-gray-300 cursor-pointer hover:text-white"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+            >
+              <option value="id" className="text-black">Number</option>
+              <option value="name" className="text-black">Name</option>
+              <option value="rarity" className="text-black">Rarity</option>
+            </select>
+            <button 
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="text-gray-400 hover:text-indigo-400 px-1 font-bold"
+              title={sortOrder === 'asc' ? "Ascending" : "Descending"}
+            >
+              {sortOrder === 'asc' ? '↑' : '↓'}
+            </button>
+          </div>
+
+          <div className="w-px h-4 bg-white/20 mx-2"></div>
+
+          {/* Zoom */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Zoom</span>
+            <input 
+              type="range" 
+              min="3" 
+              max="10" 
+              value={zoomLevel} 
+              onChange={(e) => setZoomLevel(parseInt(e.target.value))}
+              className="w-20 accent-indigo-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+        </div>
+
         {loading ? <p className="text-white">Loading Favorites...</p> : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 overflow-y-auto pb-10 pr-2 custom-scrollbar">
-            {favoritesList.map(card => (
+          <div 
+            className="grid gap-6 overflow-y-auto pb-10 pr-2 custom-scrollbar"
+            style={{ gridTemplateColumns: `repeat(${zoomLevel}, minmax(0, 1fr))` }}
+          >
+            {processedCards.map(card => (
               <div key={card.id} onClick={() => openCardDetails(card)} className="cursor-pointer transition-all duration-300 relative group hover:scale-105 z-10">
                 <div className="relative rounded-xl overflow-hidden shadow-lg group-hover:shadow-yellow-500/30 transition-shadow">
                   <img src={card.image.replace('/low.png', '/low.webp')} className="w-full object-cover" loading="lazy" />
@@ -281,10 +352,16 @@ export default function PokemonPage() {
                 </div>
               </div>
             ))}
-            {favoritesList.length === 0 && (
+            {processedCards.length === 0 && (
               <div className="col-span-full text-center py-20 bento-card">
-                <p className="text-gray-400 text-lg">No favorite cards yet.</p>
-                <p className="text-gray-500 text-sm mt-2">Star cards in the collection view to add them here.</p>
+                <p className="text-gray-400 text-lg">No favorite cards match your filter.</p>
+                {favoritesList.length === 0 ? (
+                   <p className="text-gray-500 text-sm mt-2">Star cards in the collection view to add them here.</p>
+                ) : (
+                   <button onClick={() => {setSearchQuery(''); setFilter('all');}} className="mt-4 text-indigo-400 hover:text-indigo-300 underline">
+                     Clear filters
+                   </button>
+                )}
               </div>
             )}
           </div>
