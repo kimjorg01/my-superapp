@@ -1,0 +1,70 @@
+Quick Start Examples
+REST API
+
+GET https://api.tcgdex.net/v2/en/cards/swsh3-136
+
+The response includes pricing data directly in the card object:
+
+{
+  "id": "swsh3-136",
+  "name": "Charizard",
+  "pricing": {
+    "cardmarket": { /* EUR pricing */ },
+    "tcgplayer": { /* USD pricing */ }
+  }
+}
+
+SDK Integration
+
+import TCGdx from '@tcgdx/sdk'
+
+const sdk = new TCGdx('en')
+const card = await sdk.cards.get('swsh3-136')
+
+// Access Cardmarket pricing (EUR)
+console.log(card.pricing.cardmarket.trend)
+console.log(card.pricing.cardmarket.avg30)
+
+// Access TCGplayer pricing (USD)
+console.log(card.pricing.tcgplayer.holo.marketPrice)
+console.log(card.pricing.tcgplayer.normal.lowPrice)
+
+API Examples
+Complete Pricing Response
+Here’s what pricing data looks like in a typical card response:
+
+"pricing": {
+  "cardmarket": {
+    "updated": "2025-08-05T00:42:15.000Z",
+    "unit": "EUR",
+    "avg": 0.08,
+    "low": 0.02,
+    "trend": 0.08,
+    "avg1": 0.03,
+    "avg7": 0.08,
+    "avg30": 0.08,
+    "avg-holo": 0.27,
+    "low-holo": 0.03,
+    "trend-holo": 0.21,
+    "avg1-holo": 0.19,
+    "avg7-holo": 0.19,
+    "avg30-holo": 0.26
+  },
+  "tcgplayer": {
+    "updated": "2025-08-05T20:07:54.000Z",
+    "unit": "USD",
+    "normal": {
+      "lowPrice": 0.02,
+      "midPrice": 0.17,
+      "highPrice": 25.09,
+      "marketPrice": 0.09,
+      "directLowPrice": 0.04
+    },
+    "reverse": {
+      "lowPrice": 0.09,
+      "midPrice": 0.26,
+      "highPrice": 5.17,
+      "marketPrice": 0.23,
+      "directLowPrice": 0.23
+    }
+  }

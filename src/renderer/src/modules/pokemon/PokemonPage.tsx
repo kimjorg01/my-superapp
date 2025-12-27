@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import CardDetailsModal from './components/CardDetailsModal';
 
-type ViewState = 'series' | 'sets' | 'cards';
+type ViewState = 'series' | 'sets' | 'cards' | 'favorites';
 
 export default function PokemonPage() {
   const [view, setView] = useState<ViewState>('series');
@@ -10,10 +11,14 @@ export default function PokemonPage() {
   const [seriesList, setSeriesList] = useState<any[]>([]);
   const [setsList, setSetsList] = useState<any[]>([]);
   const [cardList, setCardList] = useState<any[]>([]);
+  const [favoritesList, setFavoritesList] = useState<any[]>([]);
+  const [totalValue, setTotalValue] = useState<number | null>(null);
+  const [calculatingValue, setCalculatingValue] = useState(false);
 
   // Selection History
   const [selectedSeries, setSelectedSeries] = useState<any>(null);
   const [selectedSet, setSelectedSet] = useState<any>(null);
+  const [selectedCard, setSelectedCard] = useState<any>(null);
 
   // View Controls
   const [filter, setFilter] = useState<'all' | 'owned' | 'missing'>('all');
@@ -96,10 +101,96 @@ export default function PokemonPage() {
     setLoading(false);
   };
 
-  const toggleCard = async (cardId) => {
-    setCardList(cardList.map(c => c.id === cardId ? { ...c, isOwned: !c.isOwned } : c));
+  const openFavorites = async () => {
+    setView('favorites');
+    setLoading(true);
+    setTotalValue(null);
     // @ts-ignore
-    await window.api.toggleCardOwned(cardId);
+    const data = await window.api.getFavoriteCards();
+    setFavoritesList(data);
+    setLoading(false);
+  };
+
+  const calculateTotalValue = async () => {
+    setCalculatingValue(true);
+    let total = 0;
+    
+    // Process in chunks to avoid overwhelming the UI/API
+    for (const card of favoritesList) {
+      try {
+        // @ts-ignore
+        const details = await window.api.getCardDetails(card.id);
+        if (details?.pricing) {
+          // Prioritize Market Price from TCGPlayer, then Cardmarket Trend
+          const tcgPrice = details.pricing.tcgplayer?.prices?.normal?.market || 
+                           details.pricing.tcgplayer?.prices?.holofoil?.market || 
+                           details.pricing.tcgplayer?.prices?.reverseHolofoil?.market;
+                           
+          const cmPrice = details.pricing.cardmarket?.trend || 
+                          details.pricing.cardmarket?.['trend-holo'];
+
+          // Simple conversion 1 EUR = 1.1 USD for estimation if mixing currencies, 
+          // but for now let's just sum up raw numbers assuming user prefers one market.
+          // Or better: just take TCGPlayer USD if available, else Cardmarket EUR.
+          
+          if (tcgPrice) {
+            total += tcgPrice;
+          } else if (cmPrice) {
+            total += cmPrice; // Treating EUR as USD 1:1 for simple total, or just "Units"
+          }
+        }
+      } catch (e) {
+        console.error(`Failed to get price for ${card.name}`, e);
+      }
+    }
+    
+    setTotalValue(total);
+    setCalculatingValue(false);
+  };
+
+  const openCardDetails = (card) => {
+    setSelectedCard(card);
+  };
+
+  const handleUpdateCollection = async (cardId, counts) => {
+    const isOwned = (counts.normal + counts.holo + counts.reverseHolo) > 0;
+    
+    // Update in current list
+    setCardList(prev => prev.map(c => c.id === cardId ? { 
+      ...c, 
+      isOwned,
+      countNormal: counts.normal,
+      countHolo: counts.holo,
+      countReverseHolo: counts.reverseHolo
+    } : c));
+
+    // Update in favorites list if present
+    setFavoritesList(prev => prev.map(c => c.id === cardId ? { 
+      ...c, 
+      isOwned,
+      countNormal: counts.normal,
+      countHolo: counts.holo,
+      countReverseHolo: counts.reverseHolo
+    } : c));
+
+    // @ts-ignore
+    await window.api.updateCardCollection({ cardId, counts });
+  };
+
+  const handleToggleFavorite = async (cardId) => {
+    // Update in current list
+    setCardList(prev => prev.map(c => c.id === cardId ? { ...c, isFavorite: !c.isFavorite } : c));
+    
+    // Update in favorites list (remove if un-favorited while in favorites view)
+    if (view === 'favorites') {
+      setFavoritesList(prev => prev.filter(c => c.id !== cardId));
+    } else {
+       // We can't easily add it to favorites list without fetching the full object with set info, 
+       // so we'll just let it reload next time openFavorites is called.
+    }
+
+    // @ts-ignore
+    await window.api.toggleCardFavorite(cardId);
   };
 
   // --- RENDER HELPERS ---
@@ -108,7 +199,16 @@ export default function PokemonPage() {
   if (view === 'series') {
     return (
       <div className="h-full flex flex-col">
-        <h2 className="text-3xl font-bold mb-8 text-white">Select Series</h2>
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-white">Select Series</h2>
+          <button 
+            onClick={openFavorites}
+            className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg transition-colors border border-yellow-500/50"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            My Favorites
+          </button>
+        </div>
         {loading && <p className="text-white">Loading Series...</p>}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
           {seriesList.map(s => (
@@ -118,6 +218,86 @@ export default function PokemonPage() {
             </button>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // FAVORITES VIEW
+  if (view === 'favorites') {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setView('series')} className="text-indigo-300 hover:text-white transition flex items-center gap-2">
+              <span>←</span> Back to Series
+            </button>
+            <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+              <span className="text-yellow-400">★</span> Favorite Cards
+            </h2>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {totalValue !== null && (
+              <div className="bg-green-900/50 border border-green-500/30 px-4 py-2 rounded-lg">
+                <span className="text-green-400 text-sm uppercase font-bold mr-2">Total Value</span>
+                <span className="text-white font-mono text-xl">${totalValue.toFixed(2)}</span>
+              </div>
+            )}
+            <button 
+              onClick={calculateTotalValue}
+              disabled={calculatingValue || favoritesList.length === 0}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+            >
+              {calculatingValue ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Calculating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  Calculate Value
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {loading ? <p className="text-white">Loading Favorites...</p> : (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 overflow-y-auto pb-10 pr-2 custom-scrollbar">
+            {favoritesList.map(card => (
+              <div key={card.id} onClick={() => openCardDetails(card)} className="cursor-pointer transition-all duration-300 relative group hover:scale-105 z-10">
+                <div className="relative rounded-xl overflow-hidden shadow-lg group-hover:shadow-yellow-500/30 transition-shadow">
+                  <img src={card.image.replace('/low.png', '/low.webp')} className="w-full object-cover" loading="lazy" />
+                  {card.isOwned && (
+                    <div className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm backdrop-blur-md bg-opacity-90">
+                      OWNED
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 text-center">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{card.set?.name || 'Unknown Set'}</div>
+                  <div className="text-sm font-bold text-white">{card.name}</div>
+                </div>
+              </div>
+            ))}
+            {favoritesList.length === 0 && (
+              <div className="col-span-full text-center py-20 bento-card">
+                <p className="text-gray-400 text-lg">No favorite cards yet.</p>
+                <p className="text-gray-500 text-sm mt-2">Star cards in the collection view to add them here.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedCard && (
+          <CardDetailsModal 
+            card={selectedCard} 
+            onClose={() => setSelectedCard(null)} 
+            onUpdate={handleUpdateCollection} 
+            onToggleFavorite={handleToggleFavorite}
+          />
+        )}
       </div>
     );
   }
@@ -224,9 +404,9 @@ export default function PokemonPage() {
           style={{ gridTemplateColumns: `repeat(${zoomLevel}, minmax(0, 1fr))` }}
         >
           {processedCards.map(card => (
-            <div key={card.id} onClick={() => toggleCard(card.id)} className={`cursor-pointer transition-all duration-300 relative group ${card.isOwned ? 'opacity-100 hover:scale-105 z-10' : 'opacity-40 grayscale hover:grayscale-0 hover:opacity-100 hover:scale-105 z-10'}`}>
+            <div key={card.id} onClick={() => openCardDetails(card)} className={`cursor-pointer transition-all duration-300 relative group ${card.isOwned ? 'opacity-100 hover:scale-105 z-10' : 'opacity-40 grayscale hover:grayscale-0 hover:opacity-100 hover:scale-105 z-10'}`}>
               <div className="relative rounded-xl overflow-hidden shadow-lg group-hover:shadow-indigo-500/30 transition-shadow">
-                <img src={card.image} className="w-full object-cover" loading="lazy" />
+                <img src={card.image.replace('/low.png', '/low.webp')} className="w-full object-cover" loading="lazy" />
                 {card.isOwned && (
                   <div className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm backdrop-blur-md bg-opacity-90">
                     OWNED
@@ -247,6 +427,15 @@ export default function PokemonPage() {
             </div>
           )}
         </div>
+      )}
+
+      {selectedCard && (
+        <CardDetailsModal 
+          card={selectedCard} 
+          onClose={() => setSelectedCard(null)} 
+          onUpdate={handleUpdateCollection} 
+          onToggleFavorite={handleToggleFavorite}
+        />
       )}
     </div>
   );

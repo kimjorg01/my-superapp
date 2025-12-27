@@ -124,13 +124,50 @@ export function registerPokemonHandlers(ipcMain: IpcMain) {
     return await prisma.pokemonCard.findMany({ where: { setId } })
   })
 
-  // 4. Toggle Card
-  ipcMain.handle('toggle-card-owned', async (_event, cardId) => {
-    const card = await prisma.pokemonCard.findUnique({ where: { id: cardId } })
-    const newState = !card?.isOwned
+  // 4. Update Card Collection
+  ipcMain.handle('update-card-collection', async (_event, { cardId, counts }) => {
+    console.log(`Updating collection for ${cardId}:`, counts)
+    const isOwned = counts.normal + counts.holo + counts.reverseHolo > 0
     return await prisma.pokemonCard.update({
       where: { id: cardId },
-      data: { isOwned: newState, quantity: newState ? 1 : 0 }
+      data: {
+        countNormal: counts.normal,
+        countHolo: counts.holo,
+        countReverseHolo: counts.reverseHolo,
+        isOwned: isOwned
+      }
+    })
+  })
+
+  // 5. Get Card Details (Prices)
+  ipcMain.handle('get-card-details', async (_event, cardId) => {
+    console.log(`Fetching details (prices) for card: ${cardId}...`)
+    try {
+      const response = await fetch(`https://api.tcgdex.net/v2/en/cards/${cardId}`)
+      const data: any = await response.json()
+      return data
+    } catch (e) {
+      console.error(`Failed to fetch details for ${cardId}`, e)
+      return null
+    }
+  })
+
+  // 6. Toggle Favorite
+  ipcMain.handle('toggle-card-favorite', async (_event, cardId) => {
+    const card = await prisma.pokemonCard.findUnique({ where: { id: cardId } })
+    const newState = !card?.isFavorite
+    return await prisma.pokemonCard.update({
+      where: { id: cardId },
+      data: { isFavorite: newState }
+    })
+  })
+
+  // 7. Get Favorite Cards
+  ipcMain.handle('get-favorite-cards', async () => {
+    return await prisma.pokemonCard.findMany({
+      where: { isFavorite: true },
+      include: { set: true },
+      orderBy: { name: 'asc' }
     })
   })
 }

@@ -13,7 +13,10 @@ const api = {
   getPokemonSeries: () => ipcRenderer.invoke('get-pokemon-series'), // <--- NEW
   getSetsInSeries: (seriesId) => ipcRenderer.invoke('get-sets-in-series', seriesId), // <--- CHANGED
   getCardsInSet: (setId) => ipcRenderer.invoke('get-cards-in-set', setId),
-  toggleCardOwned: (cardId) => ipcRenderer.invoke('toggle-card-owned', cardId),
+  updateCardCollection: (data) => ipcRenderer.invoke('update-card-collection', data),
+  getCardDetails: (cardId) => ipcRenderer.invoke('get-card-details', cardId),
+  toggleCardFavorite: (cardId) => ipcRenderer.invoke('toggle-card-favorite', cardId),
+  getFavoriteCards: () => ipcRenderer.invoke('get-favorite-cards'),
 
   // System & AI
   getSystemSpecs: () => ipcRenderer.invoke('get-system-specs'),

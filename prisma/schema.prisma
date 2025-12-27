@@ -47,7 +47,11 @@ model PokemonCard {
   set       PokemonSet    @relation(fields: [setId], references: [id])
   
   isOwned   Boolean      @default(false)
-  quantity  Int          @default(0)
+  isFavorite Boolean     @default(false)
+  
+  countNormal      Int   @default(0)
+  countHolo        Int   @default(0)
+  countReverseHolo Int   @default(0)
 }
 
 // --- MODULE: AI CHAT ---
